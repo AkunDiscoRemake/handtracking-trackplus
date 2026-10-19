@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0b0d">
+  <title>Aura Hands</title>
+  <link rel="stylesheet" href="css/app.css">
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
+  </script>
+</head>
+<body>
+  <main id="stage" class="stage">
+    <video id="video" playsinline muted autoplay></video>
+    <img id="still" alt="" hidden>
+    <canvas id="gl" class="layer"></canvas>
+    <canvas id="overlay" class="layer"></canvas>
+    <div id="demoBadge" class="badge" hidden>DEMO SINTÉTICA · sem inferência neural</div>
+  </main>
+
+  <header class="topbar">
+    <div class="brand">Aura<span>Hands</span></div>
+    <nav class="modes" role="tablist" aria-label="Modo de visualização">
+      <button data-mode="aura" role="tab">Aura Only</button>
+      <button data-mode="hand_aura" role="tab" aria-selected="true">Hand + Aura</button>
+      <button data-mode="debug" role="tab">Debug</button>
+    </nav>
+    <div class="actions">
+      <button id="btnSource" class="icon" title="Fonte de vídeo" aria-label="Fonte de vídeo">
+        <svg viewBox="0 0 24 24"><path d="M4 7h3l2-2h6l2 2h3v12H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+      </button>
+      <button id="btnSettings" class="icon" title="Ajustes" aria-label="Ajustes">
+        <svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="16" cy="6" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="10" cy="12" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="18" cy="18" r="2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <aside id="hud" class="hud" aria-live="off">
+    <div class="hud-row"><span class="k">Backend</span><span id="hBackend" class="v">–</span></div>
+    <div class="hud-row"><span class="k">FPS</span><span class="v"><b id="hFps">–</b> render · <b id="hCamFps">–</b> câmera · <b id="hInfFps">–</b> inferência</span></div>
+    <div class="hud-row"><span class="k">Latência</span><span class="v"><b id="hInf">–</b> ms inferência · <b id="hC2R">–</b> ms captura→resultado</span></div>
+    <div class="hud-row"><span class="k">Jitter</span><span class="v"><b id="hJit">–</b> ms render · <b id="hNoise">–</b> px landmarks</span></div>
+    <div class="hud-row"><span class="k">Confiança</span><span id="hConf" class="v conf">–</span></div>
+    <div id="hudDebug" class="hud-debug" hidden></div>
+  </aside>
+
+  <section id="start" class="sheet start">
+    <h1>Aura Hands</h1>
+    <p class="lede">Rastreamento das duas mãos em tempo real com modelos neurais reais (RTMDet + RTMPose), rig 3D e aura negra. Tudo roda no seu navegador.</p>
+    <div id="loadState" class="load"><div class="bar"><i id="loadBar"></i></div><span id="loadText">Preparando…</span></div>
+    <div class="choices">
+      <button class="primary" data-src="camera-env">Câmera traseira</button>
+      <button data-src="camera-user">Câmera frontal</button>
+      <button data-src="sample">Foto de exemplo</button>
+      <button data-src="file">Vídeo ou imagem…</button>
+      <button data-src="synthetic">Demo sintética</button>
+    </div>
+    <p id="startMsg" class="msg" role="status"></p>
+    <input id="fileInput" type="file" accept="video/*,image/*" hidden>
+  </section>
+
+  <dialog id="settings" class="sheet settings">
+    <form method="dialog">
+      <header><h2>Ajustes</h2><button class="icon close" value="close" aria-label="Fechar">✕</button></header>
+      <fieldset>
+        <legend>Rastreamento</legend>
+        <label>Orientação ao detectar mão nova
+          <select data-set="facing"><option value="palm">Palmas para a câmera</option><option value="back">Dorso para a câmera (1ª pessoa)</option></select>
+        </label>
+        <label>FOV horizontal da câmera <output data-out="hfov"></output>°
+          <input type="range" data-set="hfov" min="45" max="100" step="1">
+        </label>
+        <label>Resolução de processamento
+          <select data-set="procRes"><option value="480">480 px</option><option value="640">640 px</option><option value="960">960 px</option></select>
+        </label>
+        <label>FPS máximo da inferência
+          <select data-set="maxInfFps"><option>10</option><option>15</option><option>24</option><option>30</option><option>60</option></select>
+        </label>
+        <label>One Euro · min cutoff <output data-out="minCutoff"></output> Hz
+          <input type="range" data-set="minCutoff" min="0.2" max="5" step="0.1">
+        </label>
+        <label>One Euro · beta <output data-out="beta"></output>
+          <input type="range" data-set="beta" min="0" max="2" step="0.05">
+        </label>
+        <label class="check"><input type="checkbox" data-set="predict"> Predição de movimento (alinha ao quadro exibido)</label>
+        <label>Horizonte máximo de predição <output data-out="maxPredMs"></output> ms
+          <input type="range" data-set="maxPredMs" min="0" max="150" step="5">
+        </label>
+      </fieldset>
+      <fieldset>
+        <legend>Aura</legend>
+        <label>Cor
+          <select data-set="auraColor"><option value="#000000">Preto absoluto</option><option value="#08080a">Quase preto</option></select>
+        </label>
+        <label>Halo externo <output data-out="auraOuter"></output>
+          <input type="range" data-set="auraOuter" min="0" max="1.5" step="0.05">
+        </label>
+        <label>Borda interna <output data-out="auraInner"></output>
+          <input type="range" data-set="auraInner" min="0" max="1.5" step="0.05">
+        </label>
+        <label>Camadas 3D <output data-out="auraShells"></output>
+          <input type="range" data-set="auraShells" min="0" max="1.5" step="0.05">
+        </label>
+        <label>Turbulência <output data-out="auraFlow"></output>
+          <input type="range" data-set="auraFlow" min="0" max="0.1" step="0.005">
+        </label>
+        <label class="check"><input type="checkbox" data-set="labels"> Rótulos de gesto e confiança</label>
+      </fieldset>
+      <fieldset>
+        <legend>Desempenho</legend>
+        <label>Backend de inferência (recarrega os modelos)
+          <select data-set="backend">
+            <option value="auto">Automático (NPU → GPU → CPU, validado)</option>
+            <option value="webnn-npu">WebNN · NPU</option>
+            <option value="webnn-gpu">WebNN · GPU</option>
+            <option value="webgpu">WebGPU</option>
+            <option value="wasm">WASM (CPU)</option>
+          </select>
+        </label>
+        <label class="check"><input type="checkbox" data-set="adaptive"> Resolução de render adaptativa</label>
+        <div class="row">
+          <button type="button" id="btnBench">Benchmark (20×)</button>
+          <button type="button" id="btnLog">Gravar métricas</button>
+          <button type="button" id="btnCsv">Baixar CSV</button>
+        </div>
+        <pre id="benchOut" class="bench"></pre>
+      </fieldset>
+    </form>
+  </dialog>
+
+  <dialog id="sourceDlg" class="sheet">
+    <form method="dialog">
+      <header><h2>Fonte</h2><button class="icon close" value="close" aria-label="Fechar">✕</button></header>
+      <div class="choices">
+        <button value="camera-env">Câmera traseira</button>
+        <button value="camera-user">Câmera frontal</button>
+        <button value="sample">Foto de exemplo</button>
+        <button value="file">Vídeo ou imagem…</button>
+        <button value="synthetic">Demo sintética</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

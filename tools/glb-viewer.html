@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GLB Viewer</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #e9e6df; font: 13px system-ui, sans-serif; }
+    canvas { display: block; width: 100%; height: 100%; }
+    .ui { position: fixed; left: 12px; top: 12px; display: flex; gap: 8px; align-items: center; background: #fff; padding: 8px 10px; border-radius: 10px; }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "../vendor/three/three.module.js", "three/addons/": "../vendor/three/addons/" } }
+  </script>
+</head>
+<body>
+  <div class="ui">
+    <label>curl <input id="t" type="range" min="0" max="1" step="0.01" value="0"></label>
+    <label><input id="wire" type="checkbox"> wireframe</label>
+    <label><input id="bones" type="checkbox" checked> ossos</label>
+  </div>
+  <canvas id="c"></canvas>
+  <script type="module">
+    // Inspects left_hand.glb / right_hand.glb: geometry, skeleton and the
+    // embedded "curl" animation (scrub with the slider, or ?t=0.5).
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    const q = new URLSearchParams(location.search);
+    const canvas = document.getElementById('c');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xe9e6df);
+    const camera = new THREE.PerspectiveCamera(35, 1, 0.01, 10);
+    const view = q.get('view') || 'palm';
+    camera.position.set(0, 0.08, view === 'back' ? -0.62 : view === 'side' ? 0 : 0.62);
+    if (view === 'side') camera.position.x = 0.62;
+    camera.lookAt(0, 0.08, 0);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x666055, 2.2));
+    const dl = new THREE.DirectionalLight(0xffffff, 1.8); dl.position.set(0.5, 1, 0.8); scene.add(dl);
+    const loader = new GLTFLoader();
+    const mixers = [], helpers = [], meshes = [];
+    for (const [i, side] of ['left', 'right'].entries()) {
+      const g = await loader.loadAsync(`../assets/hands/${side}_hand.glb`);
+      g.scene.position.x = (i ? 1 : -1) * 0.075;
+      scene.add(g.scene);
+      g.scene.traverse((o) => { if (o.isMesh) { o.material = new THREE.MeshStandardMaterial({ color: side === 'left' ? 0xc79a82 : 0xb8917f, roughness: 0.6 }); meshes.push(o); o.frustumCulled = false; } });
+      const mixer = new THREE.AnimationMixer(g.scene);
+      const act = mixer.clipAction(g.animations[0]); act.play(); act.paused = true;
+      mixers.push({ mixer, act, dur: g.animations[0].duration });
+      const h = new THREE.SkeletonHelper(g.scene); h.material.depthTest = false; scene.add(h); helpers.push(h);
+    }
+    const slider = document.getElementById('t');
+    if (q.get('t')) slider.value = q.get('t');
+    const setT = () => { for (const m of mixers) { m.act.time = Number(slider.value) * m.dur / 2; m.mixer.update(0); } };
+    slider.oninput = setT; setT();
+    document.getElementById('wire').onchange = (e) => meshes.forEach((m) => { m.material.wireframe = e.target.checked; });
+    document.getElementById('bones').onchange = (e) => helpers.forEach((h) => { h.visible = e.target.checked; });
+    const resize = () => { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); };
+    addEventListener('resize', resize); resize();
+    renderer.setAnimationLoop(() => renderer.render(scene, camera));
+    window.__ready = true;
+  </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "name": "aura-hands",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Real-time two-hand tracking (RTMDet + RTMPose, ONNX Runtime Web: WebNN/WebGPU/WASM) with rigged GLB hands and a black 3D aura. Pure HTML/CSS/JS.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "setup": "node tools/vendor.mjs && node tools/prepare-models.mjs",
+    "gen:glb": "node tools/gen-hand-glb.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "validate:models": "node tools/validate-models.mjs",
+    "bench:node": "node tools/bench-node.mjs",
+    "serve": "node tools/serve.mjs",
+    "e2e": "node tools/e2e.mjs",
+    "zip": "node tools/make-zip.mjs",
+    "build:preview": "node tools/build-preview.mjs"
+  },
+  "devDependencies": {
+    "gltf-validator": "2.0.0-dev.3.10",
+    "onnxruntime-web": "1.30.0",
+    "playwright": "^1.56.1",
+    "three": "0.186.0"
+  }
+}
