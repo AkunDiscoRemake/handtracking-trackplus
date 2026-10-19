@@ -5,7 +5,9 @@
 //     path, capture timestamps, tracking + recovery, prediction
 //  3. synthetic demo in the three render modes
 // Writes screenshots and a JSON report to build/e2e/.
-//   node tools/e2e.mjs [--isolation] [--webgpu]
+//   node tools/e2e.mjs [--isolation] [--webgpu] [--site]
+// --site serves build/site/ without COOP/COEP headers, like GitHub Pages,
+// so isolation can only come from the coi-sw.js service worker.
 import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -17,6 +19,7 @@ const OUT = join(ROOT, 'build', 'e2e');
 await mkdir(OUT, { recursive: true });
 const isolation = process.argv.includes('--isolation');
 const webgpu = process.argv.includes('--webgpu');
+const site = process.argv.includes('--site');
 const PORT = 8000 + Math.floor(Math.random() * 900);
 
 let chromium;
@@ -29,7 +32,7 @@ const y4m = join(OUT, 'hand.y4m');
 if (!existsSync(y4m)) {
   await run('node', [join(ROOT, 'tools', 'make-y4m.mjs'), join(ROOT, 'assets', 'samples', 'move_pd.png'), y4m, '120']);
 }
-const server = spawn('node', [join(ROOT, 'tools', 'serve.mjs'), String(PORT), ...(isolation ? [] : ['--no-isolation'])], { stdio: 'pipe' });
+const server = spawn('node', [join(ROOT, 'tools', 'serve.mjs'), String(PORT), ...(isolation && !site ? [] : ['--no-isolation']), ...(site ? ['--root', join(ROOT, 'build', 'site')] : [])], { stdio: 'pipe' });
 await new Promise((r) => server.stdout.once('data', r));
 
 const args = [
@@ -43,15 +46,15 @@ const page = await browser.newPage({ viewport: { width: 900, height: 640 }, devi
 const logs = [];
 page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
-const report = { isolation, webgpu, steps: {} };
+const report = { isolation, webgpu, site, steps: {} };
 const base = `http://localhost:${PORT}/`;
 
 try {
   await page.goto(`${base}?mode=debug`);
   await page.waitForFunction(() => window.__aura?.S.ready || /Falha/.test(document.getElementById('loadText').textContent), null, { timeout: 240000 });
-  const info = await page.evaluate(() => ({ ready: window.__aura.S.ready, text: document.getElementById('loadText').textContent, info: window.__aura.S.info && { labels: window.__aura.S.info.labels, report: window.__aura.S.info.report, env: window.__aura.S.info.env, ortVariant: window.__aura.S.info.ortVariant } }));
+  const info = await page.evaluate(() => ({ ready: window.__aura.S.ready, text: document.getElementById('loadText').textContent, isolated: self.crossOriginIsolated, info: window.__aura.S.info && { labels: window.__aura.S.info.labels, report: window.__aura.S.info.report, env: window.__aura.S.info.env, ortVariant: window.__aura.S.info.ortVariant } }));
   report.steps.init = info;
-  console.log('init:', JSON.stringify(info.info?.labels), info.text);
+  console.log('init:', JSON.stringify(info.info?.labels), info.text, '| crossOriginIsolated', info.isolated, '| threads', info.info?.env?.threads);
   if (!info.ready) throw new Error('worker failed: ' + info.text);
 
   // 1. sample photo

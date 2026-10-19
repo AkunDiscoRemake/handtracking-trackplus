@@ -20,6 +20,16 @@ npm run serve          # http://localhost:8080
 
 `npm run setup` baixa os pacotes oficiais do OpenMMLab (`download.openmmlab.com`), extrai `end2end.onnx` em JavaScript puro, confere o SHA-256 e divide o modelo de pose em partes de 14 MB (`models/*.bin`) para hospedagem estática. Os GLB já vêm prontos em `assets/hands/`; para regenerar: `npm run gen:glb`.
 
+### Site público com câmera (GitHub Pages)
+
+O workflow `.github/workflows/pages.yml` baixa os modelos, roda os testes, monta `build/site/` (`node tools/build-site.mjs`) e publica no GitHub Pages a cada push. O GitHub Pages serve HTTPS, então a câmera funciona no celular. Como ele não envia os cabeçalhos COOP/COEP, o service worker `coi-sw.js` os adiciona no navegador; a página recarrega uma vez no primeiro acesso para ativar o WASM multithread.
+
+Configuração única no GitHub:
+
+1. O Pages exige repositório **público** no plano gratuito (repositórios privados precisam de GitHub Pro/Team): Settings → General → Danger Zone → Change visibility.
+2. Settings → Pages → Build and deployment → Source: **GitHub Actions**.
+3. Actions → "Deploy site" → Run workflow (ou faça um push). O endereço fica `https://<usuário>.github.io/<repositório>/`.
+
 ### No celular (câmera traseira)
 
 A câmera exige contexto seguro (HTTPS ou `localhost`). Duas opções:

@@ -6,6 +6,24 @@
   <meta name="theme-color" content="#0b0b0d">
   <title>Aura Hands</title>
   <link rel="stylesheet" href="css/app.css">
+  <script>
+    // Static hosts without COOP/COEP headers: install coi-sw.js once and
+    // reload so WASM can use threads. Skipped when already isolated, inside
+    // sandboxed frames, or when service workers are unavailable.
+    (function () {
+      if (self.crossOriginIsolated || !window.isSecureContext || !('serviceWorker' in navigator) || window.AURA_CONFIG) return;
+      var KEY = 'aura-coi-reload';
+      navigator.serviceWorker.register('coi-sw.js').then(function (reg) {
+        var reload = function () {
+          try { if (sessionStorage.getItem(KEY)) return; sessionStorage.setItem(KEY, '1'); } catch (e) { return; }
+          location.reload();
+        };
+        if (navigator.serviceWorker.controller) reload();
+        else navigator.serviceWorker.addEventListener('controllerchange', reload);
+        if (reg.active && !navigator.serviceWorker.controller) reload();
+      }).catch(function () {});
+    })();
+  </script>
   <script type="importmap">
     { "imports": { "three": "./vendor/three/three.module.js", "three/addons/": "./vendor/three/addons/" } }
   </script>

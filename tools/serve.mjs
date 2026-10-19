@@ -3,13 +3,14 @@
 // cross-origin isolated (enables multi-threaded WASM). Camera access requires
 // a secure context: http://localhost works; for a phone use HTTPS (see README).
 //
-//   node tools/serve.mjs [port] [--no-isolation]
+//   node tools/serve.mjs [port] [--no-isolation] [--root build/site]
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { join, extname, normalize, dirname } from 'node:path';
+import { join, extname, normalize, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const ri = process.argv.indexOf('--root');
+const ROOT = ri > 0 ? resolve(process.argv[ri + 1]) : join(dirname(fileURLToPath(import.meta.url)), '..');
 const port = Number(process.argv.find((a) => /^\d+$/.test(a)) || 8080);
 const isolate = !process.argv.includes('--no-isolation');
 const TYPES = {

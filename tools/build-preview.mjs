@@ -18,7 +18,7 @@ const title = headRaw.match(/<title>[^<]*<\/title>/)[0];
 const body = html.match(/<body>([\s\S]*?)<\/body>/)[1];
 const config = `<script>window.AURA_CONFIG = { ortVariant: 'wasm', startSource: 'sample' };</script>\n`;
 await mkdir(OUT, { recursive: true });
-await writeFile(join(OUT, 'index.html'), title + '\n' + head.trim() + '\n' + config + body.trim() + '\n');
+await writeFile(join(OUT, 'index.html'), title + '\n' + config + head.trim() + '\n' + body.trim() + '\n');
 
 async function walk(dir) {
   const out = [];
