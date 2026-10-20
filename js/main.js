@@ -8,6 +8,7 @@ import { SyntheticSource } from './app/synthetic.js';
 import { predictBounded } from './core/filters.js';
 import { palmSizePx } from './core/lift.js';
 import { NUM_KP } from './core/handModel.js';
+import { detectEnvironment, cameraPermission, openCamera, helpFor, chromeIntentUrl } from './app/cameraAccess.js';
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -145,31 +146,33 @@ async function useSource(src) {
     else if (src === 'sample') await showImage(SAMPLES[(S.sampleIdx = ((S.sampleIdx ?? -1) + 1) % SAMPLES.length)]);
     else if (src === 'file') { $('fileInput').click(); return; }
     else if (src === 'synthetic') { S.source = 'synthetic'; S.fit = 'cover'; }
+    hideCamHelp();
     $('start').classList.add('hidden');
   } catch (e) {
     $('start').classList.remove('hidden');
-    $('startMsg').textContent = cameraError(e);
+    if (e.kind) showCamHelp(e.kind, src);
+    else $('startMsg').textContent = `Não foi possível abrir a fonte: ${e.message || e}`;
   }
 }
 
 const SAMPLES = ['assets/samples/vsign_pd.png', 'assets/samples/move_pd.png'];
 
-function cameraError(e) {
-  const n = e?.name || '';
-  if (n === 'NotAllowedError' || n === 'SecurityError') return 'Acesso à câmera bloqueado (permissão negada ou página sem HTTPS/iframe sem permissão). Use “Foto de exemplo”, “Vídeo ou imagem…” ou “Demo sintética”.';
-  if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'Nenhuma câmera compatível encontrada.';
-  return `Não foi possível abrir a câmera: ${e?.message || e}`;
-}
-
 async function startCamera(facingMode) {
-  if (!navigator.mediaDevices?.getUserMedia) throw Object.assign(new Error('getUserMedia indisponível'), { name: 'SecurityError' });
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 60 } },
-  });
+  const btn = $('btnCamEnv');
+  btn.disabled = true;
+  btn.textContent = 'Aguardando permissão…';
+  let stream;
+  try {
+    stream = await openCamera(facingMode);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Permitir câmera e começar';
+  }
   S.stream = stream;
+  // The real lens may differ from the request (e.g. a laptop with one camera).
+  const actual = stream.getVideoTracks()[0]?.getSettings?.().facingMode;
   S.source = facingMode === 'environment' ? 'camera-env' : 'camera-user';
-  S.mirror = facingMode === 'user';
+  S.mirror = (actual || facingMode) === 'user';
   S.fit = 'cover';
   video.style.objectFit = 'cover';
   stage.classList.toggle('mirror', S.mirror);
@@ -178,7 +181,54 @@ async function startCamera(facingMode) {
   video.hidden = false;
   await video.play();
   startVideoFrameLoop();
+  refreshCamStatus();
 }
+
+// ------------------------------------------------------------ camera access UI
+const CAM_ENV = detectEnvironment();
+let camRetrySrc = 'camera-env';
+
+function setCamStatus(state, text) {
+  $('camStatus').dataset.state = state;
+  $('camStatusText').textContent = text;
+}
+
+async function refreshCamStatus() {
+  if (!CAM_ENV.secure) return setCamStatus('insecure', 'Página sem HTTPS: a câmera não pode ser usada aqui.');
+  if (CAM_ENV.inApp) return setCamStatus('inapp', `Aberto dentro de ${CAM_ENV.inAppName}: abra no ${CAM_ENV.ios ? 'Safari' : 'Chrome'} para usar a câmera.`);
+  if (!CAM_ENV.hasApi) return setCamStatus('denied', 'Este navegador não oferece acesso à câmera.');
+  const st = await cameraPermission();
+  const apply = (state) => {
+    if (state === 'granted') setCamStatus('granted', 'Câmera liberada.');
+    else if (state === 'denied') setCamStatus('denied', 'Câmera bloqueada neste site. Veja como liberar abaixo.');
+    else setCamStatus('prompt', 'O navegador vai pedir permissão quando você tocar no botão.');
+  };
+  if (!st) return setCamStatus('prompt', 'O navegador vai pedir permissão quando você tocar no botão.');
+  apply(st.state);
+  if (st.state === 'denied') showCamHelp('denied', camRetrySrc);
+  // Unblocked from the site settings while the page is open → start right away.
+  st.onchange = () => {
+    apply(st.state);
+    if (st.state === 'granted' && !$('camHelp').hidden) useSource(camRetrySrc);
+  };
+}
+
+function showCamHelp(kind, src) {
+  camRetrySrc = src && src.startsWith('camera') ? src : 'camera-env';
+  const h = helpFor(kind, CAM_ENV);
+  $('camHelpTitle').textContent = h.title;
+  $('camHelpSteps').replaceChildren(...h.steps.map((t) => { const li = document.createElement('li'); li.textContent = t; return li; }));
+  $('actRetry').hidden = !h.actions.includes('retry');
+  $('actReload').hidden = !h.actions.includes('reload');
+  $('actCopy').hidden = !h.actions.includes('copy') && kind !== 'inapp';
+  $('actChrome').hidden = !h.actions.includes('openChrome');
+  $('actChrome').href = chromeIntentUrl();
+  $('camLink').value = location.href.split('#')[0];
+  $('camHelp').hidden = false;
+  $('camHelp').scrollIntoView({ block: 'nearest' });
+}
+
+function hideCamHelp() { $('camHelp').hidden = true; }
 
 async function showImage(url) {
   S.source = 'image';
@@ -426,6 +476,15 @@ function bindUi() {
     });
   }
   for (const b of document.querySelectorAll('#start [data-src]')) b.addEventListener('click', () => useSource(b.dataset.src));
+  $('btnCamEnv').addEventListener('click', () => useSource('camera-env'));
+  $('btnCamUser').addEventListener('click', () => useSource('camera-user'));
+  $('actRetry').addEventListener('click', () => useSource(camRetrySrc));
+  $('actReload').addEventListener('click', () => location.reload());
+  $('actCopy').addEventListener('click', () => {
+    const url = $('camLink').value;
+    navigator.clipboard?.writeText(url).then(() => { $('actCopy').textContent = 'Link copiado'; })
+      .catch(() => { $('camLink').select(); });
+  });
   $('btnSettings').addEventListener('click', () => $('settings').showModal());
   $('btnSource').addEventListener('click', () => $('sourceDlg').showModal());
   $('sourceDlg').addEventListener('close', () => { const v = $('sourceDlg').returnValue; if (v && v !== 'close') useSource(v); });
@@ -464,6 +523,7 @@ async function main() {
     setLoad(`Falha ao carregar os modelos 3D: ${e.message}`, null, true);
   }
   startWorker();
+  refreshCamStatus();
   requestAnimationFrame(frame);
   const src = params.get('src') || BOOT.startSource;
   if (src) useSource(src);

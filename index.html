@@ -12,9 +12,16 @@
     // sandboxed frames, or when service workers are unavailable.
     (function () {
       if (self.crossOriginIsolated || !window.isSecureContext || !('serviceWorker' in navigator) || window.AURA_CONFIG) return;
-      var KEY = 'aura-coi-reload';
+      // Never reload once the user has interacted: a reload would kill a
+      // camera permission prompt that is already on screen. In that case the
+      // page stays single-threaded until the next visit.
+      var KEY = 'aura-coi-reload', touched = false;
+      ['pointerdown', 'keydown', 'touchstart'].forEach(function (t) {
+        addEventListener(t, function () { touched = true; }, { capture: true, once: true });
+      });
       navigator.serviceWorker.register('coi-sw.js').then(function (reg) {
         var reload = function () {
+          if (touched) return;
           try { if (sessionStorage.getItem(KEY)) return; sessionStorage.setItem(KEY, '1'); } catch (e) { return; }
           location.reload();
         };
@@ -67,13 +74,28 @@
     <h1>Aura Hands</h1>
     <p class="lede">Rastreamento das duas mãos em tempo real com modelos neurais reais (RTMDet + RTMPose), rig 3D e aura negra. Tudo roda no seu navegador.</p>
     <div id="loadState" class="load"><div class="bar"><i id="loadBar"></i></div><span id="loadText">Preparando…</span></div>
-    <div class="choices">
-      <button class="primary" data-src="camera-env">Câmera traseira</button>
-      <button data-src="camera-user">Câmera frontal</button>
-      <button data-src="sample">Foto de exemplo</button>
-      <button data-src="file">Vídeo ou imagem…</button>
-      <button data-src="synthetic">Demo sintética</button>
+    <div class="cam-status" id="camStatus" data-state="unknown"><i></i><span id="camStatusText">Verificando a câmera…</span></div>
+    <button id="btnCamEnv" class="primary big">Permitir câmera e começar</button>
+    <button id="btnCamUser" class="link">Usar a câmera frontal</button>
+    <div id="camHelp" class="cam-help" hidden role="alert">
+      <h2 id="camHelpTitle"></h2>
+      <ol id="camHelpSteps"></ol>
+      <div class="row" id="camHelpActions">
+        <button id="actRetry" type="button" class="primary">Tentar de novo</button>
+        <a id="actChrome" class="button" href="#">Abrir no Chrome</a>
+        <button id="actCopy" type="button">Copiar link</button>
+        <button id="actReload" type="button">Recarregar página</button>
+      </div>
+      <input id="camLink" class="cam-link" readonly aria-label="Endereço desta página">
     </div>
+    <details class="others">
+      <summary>Sem câmera? Outras fontes</summary>
+      <div class="choices">
+        <button data-src="sample">Foto de exemplo</button>
+        <button data-src="file">Vídeo ou imagem…</button>
+        <button data-src="synthetic">Demo sintética</button>
+      </div>
+    </details>
     <p id="startMsg" class="msg" role="status"></p>
     <input id="fileInput" type="file" accept="video/*,image/*" hidden>
   </section>
